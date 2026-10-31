@@ -7,6 +7,12 @@
 #include <signal.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <sys/mman.h>
+#include <string.h>
+#include <sys/statvfs.h>
+#include <sys/statfs.h>
+#include <pthread.h>
+#include <semaphore.h>
 
 
 #define MAX_PROCESSES 20
@@ -1877,6 +1883,871 @@ void file_descriptor_demo() {
     printf("================================================\n");
 }
 
+
+/* =========================================================
+   BUFFERED VS UNBUFFERED FILE I/O DEMO
+   ========================================================= */
+
+void buffered_unbuffered_demo() {
+
+    FILE *file;
+    int fd;
+
+    char buffer[200];
+
+    const char *buffered_file = "buffered_demo.txt";
+    const char *unbuffered_file = "unbuffered_demo.txt";
+
+    char message[] =
+        "Priority Scheduling - Unbuffered I/O demonstration.";
+
+    ssize_t bytes_read;
+
+    printf("\n================================================\n");
+    printf("       BUFFERED VS UNBUFFERED FILE I/O\n");
+    printf("================================================\n");
+
+
+    /* ==============================================
+       BUFFERED FILE I/O
+       ============================================== */
+
+    printf("\n--- BUFFERED FILE I/O ---\n");
+
+    file = fopen(buffered_file, "w");
+
+    if (file == NULL) {
+
+        perror("fopen failed");
+        return;
+    }
+
+    fprintf(file, "Priority Scheduling System\n");
+
+    fprintf(file, "Buffered File I/O Demonstration\n");
+
+    printf("Data written using fprintf().\n");
+
+    fflush(file);
+
+    printf("Buffer flushed using fflush().\n");
+
+    fclose(file);
+
+    printf("File closed using fclose().\n");
+
+
+    /* ==============================================
+       UNBUFFERED FILE I/O
+       ============================================== */
+
+    printf("\n--- UNBUFFERED FILE I/O ---\n");
+
+    fd = open(
+        unbuffered_file,
+        O_CREAT | O_WRONLY | O_TRUNC,
+        0644
+    );
+
+    if (fd == -1) {
+
+        perror("open failed");
+        return;
+    }
+
+    printf("File opened using open().\n");
+
+    if (write(fd, message, sizeof(message) - 1) == -1) {
+
+        perror("write failed");
+
+        close(fd);
+        return;
+    }
+
+    printf("Data written using write().\n");
+
+    close(fd);
+
+    printf("File closed using close().\n");
+
+
+    /* ==============================================
+       READ UNBUFFERED FILE
+       ============================================== */
+
+    fd = open(unbuffered_file, O_RDONLY);
+
+    if (fd == -1) {
+
+        perror("reopen failed");
+        return;
+    }
+
+    bytes_read = read(
+        fd,
+        buffer,
+        sizeof(buffer) - 1
+    );
+
+    if (bytes_read == -1) {
+
+        perror("read failed");
+
+        close(fd);
+        return;
+    }
+
+    buffer[bytes_read] = '\0';
+
+    printf("\n--- UNBUFFERED FILE CONTENT ---\n");
+
+    printf("%s\n", buffer);
+
+    close(fd);
+
+
+    /* ==============================================
+       COMPARISON
+       ============================================== */
+
+    printf("\n--- COMPARISON ---\n");
+
+    printf("Buffered I/O uses C standard library functions.\n");
+
+    printf("Unbuffered I/O uses Linux file I/O system calls.\n");
+
+    printf("\nFiles created successfully:\n");
+
+    printf("1. %s\n", buffered_file);
+
+    printf("2. %s\n", unbuffered_file);
+
+
+    printf("\n================================================\n");
+    printf("       BUFFERED I/O DEMO COMPLETE\n");
+    printf("================================================\n");
+}
+
+
+/* =========================================================
+   MEMORY-MAPPED FILE I/O DEMO
+   ========================================================= */
+
+void memory_mapped_file_demo() {
+
+    int fd;
+    char *mapped_data;
+    const char *filename = "mmap_demo.txt";
+
+    const char message[] =
+        "Priority Scheduling - Memory Mapped File I/O Demo.";
+
+    size_t file_size = sizeof(message);
+
+    printf("\n================================================\n");
+    printf("          MEMORY-MAPPED FILE I/O\n");
+    printf("================================================\n");
+
+
+    /* STEP 1: CREATE AND OPEN FILE */
+
+    fd = open(filename, O_RDWR | O_CREAT | O_TRUNC, 0644);
+
+    if (fd == -1) {
+        perror("open failed");
+        return;
+    }
+
+    printf("\nFile opened successfully.\n");
+
+
+    /* STEP 2: SET FILE SIZE */
+
+    if (ftruncate(fd, file_size) == -1) {
+        perror("ftruncate failed");
+        close(fd);
+        return;
+    }
+
+    printf("File size allocated successfully.\n");
+
+
+    /* STEP 3: MAP FILE INTO MEMORY */
+
+    mapped_data = mmap(
+        NULL,
+        file_size,
+        PROT_READ | PROT_WRITE,
+        MAP_SHARED,
+        fd,
+        0
+    );
+
+    if (mapped_data == MAP_FAILED) {
+        perror("mmap failed");
+        close(fd);
+        return;
+    }
+
+    printf("File mapped into virtual memory.\n");
+
+
+    /* STEP 4: WRITE THROUGH MEMORY */
+
+    strcpy(mapped_data, message);
+
+    printf("\nData written through memory mapping.\n");
+
+
+    /* STEP 5: READ THROUGH MEMORY */
+
+    printf("\nMapped File Content:\n");
+    printf("%s\n", mapped_data);
+
+
+    /* STEP 6: SYNCHRONIZE CHANGES */
+
+    if (msync(mapped_data, file_size, MS_SYNC) == -1) {
+        perror("msync failed");
+    } else {
+        printf("\nMemory changes synchronized with file.\n");
+    }
+
+
+    /* STEP 7: UNMAP MEMORY */
+
+    if (munmap(mapped_data, file_size) == -1) {
+        perror("munmap failed");
+    } else {
+        printf("Memory mapping released successfully.\n");
+    }
+
+
+    /* STEP 8: CLOSE FILE */
+
+    close(fd);
+
+    printf("File descriptor closed successfully.\n");
+
+
+    printf("\nFile created: %s\n", filename);
+
+    printf("\n================================================\n");
+    printf("       MEMORY-MAPPED FILE I/O COMPLETE\n");
+    printf("================================================\n");
+}
+
+
+/* =========================================================
+   VIRTUAL FILE SYSTEM (VFS) DEMO
+   ========================================================= */
+
+void virtual_file_system_demo() {
+
+    FILE *file;
+    char line[512];
+
+    struct statvfs fs_info;
+
+    int count = 0;
+
+    printf("\n================================================\n");
+    printf("          VIRTUAL FILE SYSTEM DEMO\n");
+    printf("================================================\n");
+
+
+    /* STEP 1: DISPLAY MOUNTED FILE SYSTEMS */
+
+    printf("\n--- MOUNTED FILE SYSTEMS ---\n");
+
+    file = fopen("/proc/mounts", "r");
+
+    if (file == NULL) {
+
+        perror("Unable to open /proc/mounts");
+        return;
+    }
+
+    while (fgets(line, sizeof(line), file) != NULL) {
+
+        printf("%s", line);
+
+        count++;
+
+        if (count == 10) {
+            break;
+        }
+    }
+
+    fclose(file);
+
+
+    /* STEP 2: FILE SYSTEM INFORMATION */
+
+    printf("\n--- CURRENT FILE SYSTEM INFORMATION ---\n");
+
+    if (statvfs(".", &fs_info) == -1) {
+
+        perror("statvfs failed");
+        return;
+    }
+
+    printf("Block Size: %lu bytes\n",
+           (unsigned long)fs_info.f_bsize);
+
+    printf("Total Blocks: %lu\n",
+           (unsigned long)fs_info.f_blocks);
+
+    printf("Free Blocks: %lu\n",
+           (unsigned long)fs_info.f_bfree);
+
+    printf("Available Blocks: %lu\n",
+           (unsigned long)fs_info.f_bavail);
+
+    printf("Total File System Size: %lu bytes\n",
+           (unsigned long)(fs_info.f_blocks * fs_info.f_frsize));
+
+
+    /* STEP 3: EXPLAIN VFS */
+
+    printf("\n--- VFS CONCEPT ---\n");
+
+    printf("Linux VFS provides a common interface");
+    printf(" for different file systems.\n");
+
+    printf("Applications use common file operations");
+    printf(" such as open(), read(), write() and close().\n");
+
+    printf("VFS helps Linux support different file");
+    printf(" system implementations.\n");
+
+
+    printf("\n================================================\n");
+    printf("       VIRTUAL FILE SYSTEM DEMO COMPLETE\n");
+    printf("================================================\n");
+}
+
+
+/* =========================================================
+   EXT4 FILE SYSTEM OVERVIEW DEMO
+   ========================================================= */
+
+void ext4_file_system_demo() {
+
+    struct statfs fs;
+
+    const char *path = ".";
+
+    printf("\n================================================\n");
+    printf("          EXT4 FILE SYSTEM OVERVIEW\n");
+    printf("================================================\n");
+
+
+    /* STEP 1: GET FILE SYSTEM INFORMATION */
+
+    if (statfs(path, &fs) == -1) {
+
+        perror("statfs failed");
+        return;
+    }
+
+
+    /* STEP 2: DISPLAY FILE SYSTEM DETAILS */
+
+    printf("\n--- FILE SYSTEM DETAILS ---\n");
+
+    printf("File System Type ID: 0x%lx\n",
+           (unsigned long)fs.f_type);
+
+    printf("Block Size: %ld bytes\n",
+           (long)fs.f_bsize);
+
+    printf("Total Blocks: %ld\n",
+           (long)fs.f_blocks);
+
+    printf("Free Blocks: %ld\n",
+           (long)fs.f_bfree);
+
+    printf("Available Blocks: %ld\n",
+           (long)fs.f_bavail);
+
+    printf("Total Inodes: %ld\n",
+           (long)fs.f_files);
+
+    printf("Free Inodes: %ld\n",
+           (long)fs.f_ffree);
+
+
+    /* STEP 3: EXPLAIN EXT4 */
+
+    printf("\n--- EXT4 FILE SYSTEM CONCEPT ---\n");
+
+    printf("ext4 is a journaling file system used by Linux.\n");
+
+    printf("It uses inodes to store file metadata.\n");
+
+    printf("It supports large files and file systems.\n");
+
+    printf("Journaling helps maintain file system consistency.\n");
+
+    printf("Extents help manage file data blocks efficiently.\n");
+
+
+    printf("\n--- IMPORTANT EXT4 FEATURES ---\n");
+
+    printf("1. Journaling\n");
+    printf("2. Inode-based metadata\n");
+    printf("3. Extents\n");
+    printf("4. Delayed allocation\n");
+    printf("5. Large file system support\n");
+
+
+    printf("\n================================================\n");
+    printf("       EXT4 FILE SYSTEM DEMO COMPLETE\n");
+    printf("================================================\n");
+}
+
+
+/* =========================================================
+   THREAD CREATION AND EXECUTION DEMO
+   ========================================================= */
+
+void *thread_task(void *arg) {
+
+    char *message = (char *)arg;
+
+    printf("\nThread is executing...\n");
+
+    printf("Thread Message: %s\n", message);
+
+    printf("Thread ID: %lu\n",
+           (unsigned long)pthread_self());
+
+    return NULL;
+}
+
+
+/* =========================================================
+   THREAD CREATION DEMO
+   ========================================================= */
+
+void thread_creation_demo() {
+
+    pthread_t thread;
+
+    int result;
+
+    char message[] = "Priority Scheduling - Thread Execution";
+
+    printf("\n================================================\n");
+    printf("          THREAD CREATION DEMO\n");
+    printf("================================================\n");
+
+
+    /* CREATE THREAD */
+
+    printf("\nMain thread: Creating a new thread...\n");
+
+    result = pthread_create(
+        &thread,
+        NULL,
+        thread_task,
+        message
+    );
+
+    if (result != 0) {
+
+        printf("Thread creation failed: %s\n",
+               strerror(result));
+
+        return;
+    }
+
+    printf("Thread created successfully!\n");
+
+
+    /* WAIT FOR THREAD */
+
+    result = pthread_join(thread, NULL);
+
+    if (result != 0) {
+
+        printf("Thread joining failed: %s\n",
+               strerror(result));
+
+        return;
+    }
+
+    printf("\nMain thread: Child thread completed.\n");
+
+    printf("\n================================================\n");
+    printf("       THREAD CREATION DEMO COMPLETE\n");
+    printf("================================================\n");
+}
+
+
+/* =========================================================
+   MULTIPLE THREAD CREATION DEMO
+   ========================================================= */
+
+void *multiple_thread_task(void *arg) {
+
+    int thread_number = *(int *)arg;
+
+    printf("\nThread %d is executing.\n", thread_number);
+
+    printf("Thread %d ID: %lu\n",
+           thread_number,
+           (unsigned long)pthread_self());
+
+    printf("Thread %d completed its task.\n", thread_number);
+
+    return NULL;
+}
+
+
+void multiple_thread_demo() {
+
+    pthread_t threads[3];
+
+    int thread_numbers[3] = {1, 2, 3};
+
+    int result;
+
+    printf("\n================================================\n");
+    printf("          MULTIPLE THREAD DEMO\n");
+    printf("================================================\n");
+
+
+    /* CREATE THREE THREADS */
+
+    for (int i = 0; i < 3; i++) {
+
+        result = pthread_create(
+            &threads[i],
+            NULL,
+            multiple_thread_task,
+            &thread_numbers[i]
+        );
+
+        if (result != 0) {
+
+            printf("Thread %d creation failed: %s\n",
+                   i + 1, strerror(result));
+
+            for (int j = 0; j < i; j++) {
+                pthread_join(threads[j], NULL);
+            }
+
+            return;
+        }
+
+        printf("Thread %d created successfully.\n", i + 1);
+    }
+
+
+    /* WAIT FOR ALL THREADS */
+
+    for (int i = 0; i < 3; i++) {
+
+        pthread_join(threads[i], NULL);
+    }
+
+
+    printf("\nAll three threads completed successfully.\n");
+
+    printf("\n================================================\n");
+    printf("       MULTIPLE THREAD DEMO COMPLETE\n");
+    printf("================================================\n");
+}
+
+
+/* =========================================================
+   RACE CONDITION DEMONSTRATION
+   ========================================================= */
+
+int shared_counter = 0;
+
+
+void *race_condition_task(void *arg) {
+
+    for (int i = 0; i < 1000000; i++) {
+
+        shared_counter++;
+    }
+
+    return NULL;
+}
+
+
+void race_condition_demo() {
+
+    pthread_t t1, t2;
+
+    shared_counter = 0;
+
+    printf("\n================================================\n");
+    printf("          RACE CONDITION DEMO\n");
+    printf("================================================\n");
+
+    printf("\nInitial Counter Value: %d\n", shared_counter);
+
+
+    /* CREATE TWO THREADS */
+
+    pthread_create(&t1, NULL, race_condition_task, NULL);
+
+    pthread_create(&t2, NULL, race_condition_task, NULL);
+
+
+    /* WAIT FOR BOTH THREADS */
+
+    pthread_join(t1, NULL);
+
+    pthread_join(t2, NULL);
+
+
+    printf("\nExpected Counter Value: 2000000\n");
+
+    printf("Actual Counter Value: %d\n", shared_counter);
+
+
+    printf("\nBoth threads accessed the same shared variable.\n");
+
+    printf("Without synchronization, concurrent updates can");
+    printf(" cause a race condition.\n");
+
+
+    printf("\n================================================\n");
+    printf("       RACE CONDITION DEMO COMPLETE\n");
+    printf("================================================\n");
+}
+
+
+/* =========================================================
+   MUTEX LOCK DEMONSTRATION
+   ========================================================= */
+
+pthread_mutex_t counter_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+sem_t resource_semaphore;
+
+int mutex_counter = 0;
+
+
+void *mutex_thread_task(void *arg) {
+
+    for (int i = 0; i < 1000000; i++) {
+
+        /* LOCK THE SHARED RESOURCE */
+
+        pthread_mutex_lock(&counter_mutex);
+
+        mutex_counter++;
+
+        /* UNLOCK THE SHARED RESOURCE */
+
+        pthread_mutex_unlock(&counter_mutex);
+    }
+
+    return NULL;
+}
+
+
+void mutex_lock_demo() {
+
+    pthread_t t1, t2;
+
+    mutex_counter = 0;
+
+    printf("\n================================================\n");
+    printf("          MUTEX LOCK DEMO\n");
+    printf("================================================\n");
+
+    printf("\nInitial Counter Value: %d\n", mutex_counter);
+
+
+    /* CREATE TWO THREADS */
+
+    pthread_create(&t1, NULL, mutex_thread_task, NULL);
+
+    pthread_create(&t2, NULL, mutex_thread_task, NULL);
+
+
+    /* WAIT FOR BOTH THREADS */
+
+    pthread_join(t1, NULL);
+
+    pthread_join(t2, NULL);
+
+
+    printf("\nExpected Counter Value: 2000000\n");
+
+    printf("Actual Counter Value: %d\n", mutex_counter);
+
+
+    printf("\nMutex lock protects the shared counter.\n");
+
+    printf("Only one thread can access the critical");
+    printf(" section at a time.\n");
+
+
+    /* DESTROY MUTEX */
+
+    
+
+
+    printf("\n================================================\n");
+    printf("          MUTEX LOCK DEMO COMPLETE\n");
+    printf("================================================\n");
+}
+
+
+/* =========================================================
+   SEMAPHORE THREAD FUNCTION
+   ========================================================= */
+
+void *semaphore_thread_task(void *arg) {
+
+    int thread_id = *(int *)arg;
+
+    printf("\nThread %d is waiting for a resource...\n", thread_id);
+
+    /* WAIT FOR SEMAPHORE PERMISSION */
+
+    if (sem_wait(&resource_semaphore) == -1) {
+        perror("sem_wait");
+        return NULL;
+    }
+
+    printf("Thread %d acquired the resource.\n", thread_id);
+
+    /* SIMULATE RESOURCE USAGE */
+
+    sleep(2);
+
+    printf("Thread %d is releasing the resource.\n", thread_id);
+
+    /* RELEASE THE RESOURCE */
+
+    if (sem_post(&resource_semaphore) == -1) {
+        perror("sem_post");
+    }
+
+    return NULL;
+}
+
+
+/* =========================================================
+   SEMAPHORE DEMONSTRATION
+   ========================================================= */
+
+void semaphore_demo() {
+
+    pthread_t threads[4];
+    int thread_ids[4];
+
+    printf("\n================================================\n");
+    printf("          SEMAPHORE DEMO\n");
+    printf("================================================\n");
+
+    /* INITIALIZE SEMAPHORE WITH 2 AVAILABLE RESOURCES */
+
+    if (sem_init(&resource_semaphore, 0, 2) == -1) {
+        perror("sem_init");
+        return;
+    }
+
+    printf("\nSemaphore initialized with 2 resources.\n");
+    printf("Creating 4 threads...\n");
+
+    /* CREATE FOUR THREADS */
+
+    for (int i = 0; i < 4; i++) {
+
+        thread_ids[i] = i + 1;
+
+        if (pthread_create(&threads[i], NULL,
+                           semaphore_thread_task,
+                           &thread_ids[i]) != 0) {
+
+            perror("pthread_create");
+
+            /* Wait for threads already created */
+            for (int j = 0; j < i; j++) {
+                pthread_join(threads[j], NULL);
+            }
+
+            sem_destroy(&resource_semaphore);
+            return;
+        }
+    }
+
+    /* WAIT FOR ALL THREADS */
+
+    for (int i = 0; i < 4; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    /* DESTROY SEMAPHORE */
+
+    sem_destroy(&resource_semaphore);
+
+    printf("\nAll four threads completed successfully.\n");
+    printf("Maximum simultaneous resource access: 2\n");
+
+    printf("\n================================================\n");
+    printf("          SEMAPHORE DEMO COMPLETE\n");
+    printf("================================================\n");
+}
+
+// Critical Section Demonstration
+
+int critical_section_counter = 0;
+pthread_mutex_t critical_section_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+void *critical_section_task(void *arg) {
+    int thread_id = *(int *)arg;
+
+    printf("\nThread %d entering critical section...\n", thread_id);
+
+    pthread_mutex_lock(&critical_section_mutex);
+
+    critical_section_counter++;
+    printf("Thread %d is executing inside critical section.\n", thread_id);
+
+    pthread_mutex_unlock(&critical_section_mutex);
+
+    printf("Thread %d leaving critical section.\n", thread_id);
+
+    return NULL;
+}
+
+void critical_section_demo() {
+    pthread_t threads[3];
+    int thread_ids[3] = {1, 2, 3};
+
+    critical_section_counter = 0;
+
+    printf("\n========== CRITICAL SECTION DEMO ==========\n");
+
+    for (int i = 0; i < 3; i++) {
+        pthread_create(&threads[i], NULL, critical_section_task, &thread_ids[i]);
+    }
+
+    for (int i = 0; i < 3; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    printf("\nFinal Critical Section Counter: %d\n", critical_section_counter);
+
+    printf("\n========== CRITICAL SECTION DEMO COMPLETE ==========\n");
+}
+
+
+
+
 /* =========================================================
    MAIN MENU
    ========================================================= */
@@ -1918,7 +2789,20 @@ printf("14. Memory Errors Demo\n");
 printf("15. Memory Debugging & Analysis Demo\n");
 printf("16. File System & File I/O Demo\n");
 printf("17. File Descriptor & Open File Demo\n");
-printf("18. Exit\n");
+printf("18. Buffered vs Unbuffered I/O Demo\n");
+printf("19. Memory-Mapped File I/O Demo\n");
+printf("20. Virtual File System (VFS) Demo\n");
+printf("21. ext4 File System Overview Demo\n");
+printf("22. Thread Creation Demo\n");
+printf("23. Multiple Thread Creation Demo\n");
+printf("24. Race Condition Demo\n");
+printf("25. Mutex Lock Demo\n");
+printf("26. Semaphore Demo\n");
+printf("24. Race Condition Demo\n");
+printf("25. Mutex Lock Demo\n");
+printf("26. Semaphore Demo\n");
+printf("27. Critical Section Demo\n");
+printf("28. Exit\n");
 
         printf("--------------------------------------------\n");
 
@@ -2023,6 +2907,46 @@ case 17:
     break;
 
 case 18:
+    buffered_unbuffered_demo();
+    break;
+
+case 19:
+    memory_mapped_file_demo();
+    break;
+
+case 20:
+    virtual_file_system_demo();
+    break;
+
+case 21:
+    ext4_file_system_demo();
+    break;
+
+case 22:
+    thread_creation_demo();
+    break;
+
+case 23:
+    multiple_thread_demo();
+    break;
+
+case 24:
+    race_condition_demo();
+    break;
+
+case 25:
+    mutex_lock_demo();
+    break;
+
+case 26:
+    semaphore_demo();
+    break;
+
+case 27:
+    critical_section_demo();
+    break;
+
+case 28:
     printf("\nExiting Priority Scheduling System...\n");
     printf("Thank you!\n");
     break;
@@ -2032,7 +2956,7 @@ case 18:
                 printf("Please select a valid option.\n");
         }
 
-    } while (choice != 18);
+    } while (choice != 28);
 
     return 0;
 }
